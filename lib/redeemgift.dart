@@ -1,7 +1,8 @@
 import 'package:bottlebucks/services/loginapi.dart';
+import 'package:bottlebucks/services/profileapi.dart';
+import 'package:bottlebucks/viewreward.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
-import 'loginapi.dart'; // contains baseUrl & loginId
 
 class RedeemGift extends StatefulWidget {
   const RedeemGift({super.key});
@@ -13,6 +14,7 @@ class RedeemGift extends StatefulWidget {
 class _RedeemGiftState extends State<RedeemGift> {
   List<dynamic> gifts = [];
   bool isLoading = true;
+  final Dio dio = Dio();
 
   @override
   void initState() {
@@ -20,15 +22,11 @@ class _RedeemGiftState extends State<RedeemGift> {
     fetchGifts();
   }
 
+  // ✅ Fetch all gifts
   Future<void> fetchGifts() async {
-    final dio = Dio();
-
     try {
       final response = await dio.get('$baseUrl/api/gifts/');
-      print(response.data);
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        print("Fetch Success: ${response.data}");
+      if (response.statusCode == 200) {
         setState(() {
           gifts = response.data;
           isLoading = false;
@@ -46,6 +44,74 @@ class _RedeemGiftState extends State<RedeemGift> {
     }
   }
 
+  // ✅ Redeem Gift API call
+  Future<bool> redeemGift(int giftId, String giftName) async {
+    try {
+      final response = await dio.post('$baseUrl/api/redeem/$loginId/$giftId/');
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("🎁 ${data['message']}"),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.push(context, MaterialPageRoute(builder: (context) => const ViewReward()));
+        return true;
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("⚠️ ${response.data['message'] ?? 'Failed to redeem.'}"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return false;
+      }
+    } on DioException catch (e) {
+      String errorMsg = e.response?.data['message'] ?? 'An error occurred.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("❌ $errorMsg"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+    return false;
+  }
+
+  // ✅ Confirmation dialog
+  void _showRedeemDialog(BuildContext context, int giftId, String giftName) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text("Confirm Redemption"),
+        content: Text("Do you want to redeem \"$giftName\"?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await redeemGift(giftId, giftName);
+              Navigator.pop(ctx, true);
+              
+              
+            },
+            child: const Text("Redeem"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -55,7 +121,9 @@ class _RedeemGiftState extends State<RedeemGift> {
       ),
       backgroundColor: const Color(0xFFF5F5F5),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.deepPurple))
+          ? const Center(
+              child: CircularProgressIndicator(color: Colors.deepPurple),
+            )
           : gifts.isEmpty
               ? const Center(
                   child: Text(
@@ -86,7 +154,8 @@ class _RedeemGiftState extends State<RedeemGift> {
                                   width: 90,
                                   height: 90,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Icon(Icons.card_giftcard, size: 60, color: Colors.deepPurple),
+                                  errorBuilder: (_, __, ___) =>
+                                      const Icon(Icons.card_giftcard, size: 60, color: Colors.deepPurple),
                                 ),
                               ),
                               const SizedBox(width: 15),
@@ -129,7 +198,10 @@ class _RedeemGiftState extends State<RedeemGift> {
                                           ),
                                         ),
                                         onPressed: () {
-                                          _showRedeemDialog(context, gift['title'] ?? 'Gift');
+                                          _showRedeemDialog(
+                                              context,
+                                              gift['id'],
+                                              gift['Giftname'] ?? 'Gift');
                                         },
                                         icon: const Icon(Icons.card_giftcard),
                                         label: const Text("Redeem"),
@@ -145,39 +217,6 @@ class _RedeemGiftState extends State<RedeemGift> {
                     },
                   ),
                 ),
-    );
-  }
-
-  void _showRedeemDialog(BuildContext context, String giftName) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text("Confirm Redemption"),
-        content: Text("Do you want to redeem \"$giftName\"?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text("You have redeemed \"$giftName\" successfully!"),
-                  backgroundColor: Colors.deepPurple,
-                ),
-              );
-            },
-            child: const Text("Redeem"),
-          ),
-        ],
-      ),
     );
   }
 }

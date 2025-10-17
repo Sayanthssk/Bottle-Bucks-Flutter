@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'package:bottlebucks/addaccount.dart';
+import 'package:bottlebucks/login.dart';
 import 'package:bottlebucks/redeemgift.dart';
 import 'package:bottlebucks/scanner.dart';
 import 'package:bottlebucks/services/loginapi.dart';
 import 'package:bottlebucks/services/profileapi.dart';
+import 'package:bottlebucks/viewreward.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 class HomePage extends StatefulWidget {
@@ -110,7 +113,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           IconButton(icon: const Icon(Icons.notifications), onPressed: () {}),
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () => Navigator.pop(context),
+            onPressed:
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginPage()),
+                ),
           ),
         ],
       ),
@@ -119,36 +126,64 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           padding: EdgeInsets.zero,
           children: [
             UserAccountsDrawerHeader(
-              accountName: Text(profileMap['name'] ?? 'No Name'),
-              accountEmail: Text(profileMap['email'] ?? 'No Email'),
+              accountName: Text(
+                profileMap['name'] ?? 'No Name',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              accountEmail: Text(
+                "Email: ${profileMap['email'] ?? 'No Email'}",
+                style: const TextStyle(fontSize: 16),
+              ),
               currentAccountPicture: CircleAvatar(
                 backgroundColor: Colors.white,
                 backgroundImage:
                     profileMap['profileImage'] != null &&
                             profileMap['profileImage'].toString().isNotEmpty
                         ? NetworkImage('$baseUrl${profileMap['profileImage']}')
-                        : NetworkImage('$baseUrl${profileMap['profileImage']}'),
+                        : const AssetImage('assets/default_profile.png')
+                            as ImageProvider,
               ),
               decoration: const BoxDecoration(color: Colors.deepPurple),
             ),
+
+            // Home
             ListTile(
               leading: const Icon(Icons.home),
               title: const Text('Home'),
               onTap: () => Navigator.pop(context),
             ),
+
+            // Profile
             ListTile(
               leading: const Icon(Icons.person),
               title: const Text('Profile'),
-              onTap: () {},
+              onTap: () {
+                // Navigate to profile page
+              },
             ),
+
+            // Settings
             ListTile(
               leading: const Icon(Icons.settings),
               title: const Text('Settings'),
+              onTap: () {
+                // Navigate to settings page
+              },
+            ),
+
+            // Optional: Show points as a separate tile for more visibility
+            ListTile(
+              leading: const Icon(Icons.star),
+              title: Text("Points: ${profileMap['points'] ?? 0}"),
               onTap: () {},
             ),
           ],
         ),
       ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -201,13 +236,186 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               ),
             ),
             const SizedBox(height: 20),
+
             FadeTransition(
               opacity: _textAnimation,
-              child: const Text(
-                "Welcome Back 👋",
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Points: ${profileMap['points'] ?? 0}",
+                    style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.deepPurple,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () async {
+                      List<Map<String, dynamic>> accounts = [];
+                      bool isLoadingAccounts = true;
+
+                      // Step 1: Fetch accounts from API
+                      try {
+                        final response = await Dio().get(
+                          '$baseUrl/api/Viewaccount/$loginId',
+                        );
+
+                        if (response.statusCode == 200) {
+                          final List<dynamic> data = response.data;
+                          print(response.data);
+                          accounts =
+                              data.map((item) {
+                                return {
+                                  "accountId":
+                                      item['id'], // assuming API returns account ID
+                                  "accountNo": item['accountno'] ?? "",
+                                  "ifsc": item['IFSC_code'] ?? "",
+                                  "bank": item['bank_name'] ?? "",
+                                };
+                              }).toList();
+                        }
+                      } catch (e) {
+                        print("Error fetching accounts: $e");
+                        accounts = [];
+                      } finally {
+                        isLoadingAccounts = false;
+                      }
+
+                      // Step 2: Show account selection dialog
+                      final selectedAccount = await showDialog<
+                        Map<String, dynamic>
+                      >(
+                        context: context,
+                        builder:
+                            (ctx) => AlertDialog(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              title: const Text("Select Account"),
+                              content: SizedBox(
+                                width: double.maxFinite,
+                                child:
+                                    isLoadingAccounts
+                                        ? const Center(
+                                          child: CircularProgressIndicator(),
+                                        )
+                                        : accounts.isEmpty
+                                        ? const Center(
+                                          child: Text("No accounts found"),
+                                        )
+                                        : ListView.builder(
+                                          shrinkWrap: true,
+                                          itemCount: accounts.length,
+                                          itemBuilder: (context, index) {
+                                            final acc = accounts[index];
+                                            return ListTile(
+                                              title: Text(
+                                                "${acc['bank']} - ${acc['accountNo']}",
+                                              ),
+                                              subtitle: Text(
+                                                "IFSC: ${acc['ifsc']}",
+                                              ),
+                                              onTap:
+                                                  () => Navigator.pop(ctx, acc),
+                                            );
+                                          },
+                                        ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, null),
+                                  child: const Text("Cancel"),
+                                ),
+                              ],
+                            ),
+                      );
+
+                      // Step 3: Show confirmation dialog
+                      if (selectedAccount != null) {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder:
+                              (ctx) => AlertDialog(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                title: const Text("Confirm Redemption"),
+                                content: Text(
+                                  "Do you want to redeem your points using account ${selectedAccount['bank']} - ${selectedAccount['accountNo']}?",
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text("Cancel"),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.deepPurple,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text("Confirm"),
+                                  ),
+                                ],
+                              ),
+                        );
+
+                        if (confirm == true) {
+                          try {
+                            // Step 4: Call redeem API
+                            final response = await Dio().post(
+                              '$baseUrl/api/creditpoints/',
+                              data: {
+                                "user_id": loginId,
+                                "account_id": selectedAccount['accountId'],
+                                "points":
+                                    profileMap['points'], // redeem all points
+                              },
+                            );
+
+                            if (response.statusCode == 200) {
+                              final remainingPoints =
+                                  response.data['remaining_points'];
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    "Points redeemed successfully! Remaining: $remainingPoints",
+                                  ),
+                                ),
+                              );
+
+                              // Update local points
+                              setState(() {
+                                profileMap['points'] = remainingPoints;
+                              });
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Failed to redeem points"),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            print("Error redeeming points: $e");
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Error redeeming points"),
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    },
+                    child: const Text("Redeem"),
+                  ),
+                ],
               ),
             ),
+
             const SizedBox(height: 10),
             FadeTransition(
               opacity: _textAnimation,
@@ -230,13 +438,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     icon: Icons.card_giftcard_sharp,
                     label: "Redeem Gift",
                     color: Colors.orange,
-                    onTap: () {
-                      Navigator.push(
+                    onTap: () async {
+                      final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => const RedeemGift(),
                         ),
                       );
+                      if (result == true) {
+                        await loadProfile();
+                      }
                     },
                   ),
                   _buildCard(
@@ -246,17 +457,24 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     onTap: () {
                       Navigator.push(
                         context,
-                         MaterialPageRoute(
-                          builder: (context) => const Addaccount()
-                          )
-                         );
+                        MaterialPageRoute(
+                          builder: (context) => const Addaccount(),
+                        ),
+                      );
                     },
                   ),
                   _buildCard(
                     icon: Icons.store,
                     label: "View Rewards",
                     color: Colors.blue,
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ViewReward(),
+                        ),
+                      );
+                    },
                   ),
                   _buildCard(
                     icon: Icons.qr_code_scanner,
